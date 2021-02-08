@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import os
-chdir("/home/dyndns-script/")
+os.chdir("/home/dyndns-script/")
 
 import subprocess
 import ovh
