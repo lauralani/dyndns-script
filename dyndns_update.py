@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import os
-os.chdir("/root/dyndns-script")
+#os.chdir("/root/dyndns-script")
 
 import subprocess
 import ovh
@@ -13,9 +13,15 @@ subdomain = "mx00"
 with open('config.json', 'r') as file:
     config = json.load(file)
 
-cached_ips = get_cache()
 new_ips = get_currentips()
 
+try:
+    cached_ips = get_cache()
+except:
+    print("cache.json doesn't exist. Populating from known IPs")
+    write_currentips(new_ips)
+    cached_ips = new_ips
+    
 
 if not cache_isdifferent(cached_ips, new_ips):
     exit()
@@ -31,5 +37,5 @@ client = ovh.Client(
 )
 
 
-set_zonerecord(client, domain, "AAAA", subdomain, new_ips.ipv6, 60)
-set_zonerecord(client, domain, "A", subdomain, new_ips.ipv4, 60)
+#set_zonerecord(client, domain, "AAAA", subdomain, new_ips.ipv6, 60)
+#set_zonerecord(client, domain, "A", subdomain, new_ips.ipv4, 60)
