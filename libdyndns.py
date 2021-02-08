@@ -13,10 +13,15 @@ def get_cache():
     with open('cache.json', 'r') as file:
         return json.loads(file.read(), object_hook=dict_to_obj)
 
-def get_zonerecord(zone, type, subdomain):
+def get_zonerecord(client, zone, type, subdomain):
     result = client.get(f"/domain/zone/{zone}/record", fieldType=type, subDomain=subdomain)
-    return result
+    return result[0]
 
+def set_zonerecord(client, zone, type, subdomain, target, ttl):
+    id = get_zonerecord(client=client, zone=zone, type=type, subdomain=subdomain)
+    result = client.put(f'/domain/zone/{zone}/record/{id}', 
+        subDomain=subdomain, target=target, ttl=ttl
+    )
 
 def cache_isdifferent(old, new):
     changed = False

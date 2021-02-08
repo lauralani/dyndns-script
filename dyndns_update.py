@@ -20,7 +20,6 @@ if not cache_isdifferent(cached_ips, new_ips):
 else:
     write_currentips(new_ips)
 
-exit()
 
 client = ovh.Client(
     endpoint='ovh-eu',               # Endpoint of API OVH Europe (List of available endpoints)
@@ -30,4 +29,5 @@ client = ovh.Client(
 )
 
 
-print(get_zonerecord(domain, "AAAA", "mx00")[0])
+set_zonerecord(client, domain, "AAAA", subdomain, new_ips.ipv6, 60)
+set_zonerecord(client, domain, "A", subdomain, new_ips.ipv4, 60)
