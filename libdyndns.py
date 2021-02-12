@@ -22,6 +22,7 @@ def set_zonerecord(client, zone, type, subdomain, target, ttl):
     result = client.put(f'/domain/zone/{zone}/record/{id}', 
         subDomain=subdomain, target=target, ttl=ttl
     )
+    client.post(f'/domain/zone/{zone}/refresh')
 
 def cache_isdifferent(old, new):
     changed = False
