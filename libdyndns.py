@@ -77,4 +77,3 @@ def get_currentips():
 def write_currentips(obj):
     with open('cache.json', 'w') as outfile:
         outfile.write(json.dumps(obj, default=convert_to_dict))
-    print("wrote cache")
