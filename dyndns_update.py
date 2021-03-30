@@ -45,9 +45,11 @@ if (not "-4" in sys.argv) and (not "-6" in sys.argv):
 
 if "-4" in sys.argv:
     result = AZURE_update_zonerecord(domain=domain, apikey=apikey, ipaddress=new_ips.ipv4)
+    print(f"{ts()}setting {new_ips.ipv4} via https://api.lauka.space/dyndns")
 
 if "-6" in sys.argv:
     result = AZURE_update_zonerecord(domain=domain, apikey=apikey, ipaddress=new_ips.ipv6)
+    print(f"{ts()}setting {new_ips.ipv6} via https://api.lauka.space/dyndns")
 
 if result == False:
     print(f"{ts()}Error setting IPs. Deleting cache.")
