@@ -22,3 +22,8 @@ apikey =  "b11111c1-1111-1111-1115-480e1111111c"
 # script root folder
 basedir = "/root/dyndns-script"
 ```
+
+## crontab
+```
+*/10 * * * * /root/dyndns-script/dyndns_update.py -4 -6 >> /var/log/dyndns.log
+```
