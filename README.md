@@ -3,7 +3,8 @@
 ```
 python3 python3-pip
 
-pip3 install ovh
+pip install --upgrade pip
+pip install pytz requests
 ```
 
 
