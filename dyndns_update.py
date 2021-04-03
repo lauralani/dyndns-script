@@ -46,7 +46,6 @@ if (not "-4" in sys.argv) and (not "-6" in sys.argv):
     exit(1);
 
 azurerequest = AZURE_DYNDNS()
-azurerequest.Domain = domain
 
 if "-4" in sys.argv:
     azurerequest.IPv4 = new_ips.ipv4
@@ -58,12 +57,12 @@ if "-6" in sys.argv:
 
 requestbody = json.dumps(azurerequest.__dict__)
 #result = AZURE_update_zonerecord(domain=domain, apikey=apikey, ipaddress=new_ips.ipv6)
-print(requestbody)
+print(f"Body: {requestbody}")
 headers = {
   'x-api-key': apikey ,
   'Content-Type': 'application/json'
 }
-result = requests.request("POST", "https://api.lauka.space/dyndns", headers=headers, data=requestbody)
+result = requests.request("PUT", f"https://api.lauka.space/dyndns/records/{domain}", headers=headers, data=requestbody)
 
 if result == False:
     print(f"{ts()}Error setting IPs. Deleting cache.")
