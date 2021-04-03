@@ -9,3 +9,8 @@ def AZURE_update_zonerecord(domain, apikey, ipaddress):
     else:
         #print(response.text)
         return(True)
+
+class AZURE_DYNDNS:
+    IPv4 = ""
+    IPv6 = ""
+    Domain = ""
