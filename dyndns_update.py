@@ -62,7 +62,7 @@ headers = {
   'x-api-key': apikey ,
   'Content-Type': 'application/json'
 }
-result = requests.request("PUT", f"https://api.lauka.space/dyndns/records/{domain}", headers=headers, data=requestbody)
+result = requests.request("PUT", f"https://api.lauka.app/dyndns/records/{domain}", headers=headers, data=requestbody)
 
 if result == False:
     print(f"{ts()}Error setting IPs. Deleting cache.")
