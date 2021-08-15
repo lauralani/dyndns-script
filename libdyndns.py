@@ -72,14 +72,15 @@ def dict_to_obj(our_dict):
     return obj
 
 def get_currentips():
-    url = "https://ifconfig.co/ip"
-    ipv6_new = str(subprocess.run(['/usr/bin/curl', '-6', "-s", url], stdout=subprocess.PIPE).stdout, encoding="utf-8").strip()
+    url4 = "https://api.ipify.org"
+    url6 = "https://api6.ipify.org"
+    ipv6_new = str(subprocess.run(['/usr/bin/curl', '-6', "-s", url6], stdout=subprocess.PIPE).stdout, encoding="utf-8").strip()
     try:
         ipaddress.ip_address(ipv6_new)
     except:
         ipv6_new = ""
 
-    ipv4_new = str(subprocess.run(['/usr/bin/curl', '-4', "-s", url], stdout=subprocess.PIPE).stdout, encoding="utf-8").strip()
+    ipv4_new = str(subprocess.run(['/usr/bin/curl', '-4', "-s", url4], stdout=subprocess.PIPE).stdout, encoding="utf-8").strip()
     try:
         ipaddress.ip_address(ipv4_new)
     except:
