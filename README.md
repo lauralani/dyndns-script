@@ -1,6 +1,7 @@
 # dyndns-script
 ## Prerequisites
 ```
+dnf module -y install python39
 python3 python3-pip
 
 pip3 install --upgrade pip
