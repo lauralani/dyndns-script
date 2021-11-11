@@ -22,8 +22,11 @@ log = logging.getLogger("dyndns_update")
 
 if args.verbose:
     log.setLevel(logging.DEBUG)
-
 log.debug("dyndns_update.py started")
+
+if args.nocache:
+    log.info("skipping cache due to '--no-cache'.")
+
 log.info("Info-Message")
 
 #os.chdir(basedir)
