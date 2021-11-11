@@ -5,7 +5,7 @@ dnf module -y install python39
 python3 python3-pip
 
 pip3 install --upgrade pip
-pip3 install pytz requests azure-mgmt-dns
+pip3 install pytz requests azure-mgmt-dns azure-identity
 ```
 
 
@@ -14,14 +14,17 @@ pip3 install pytz requests azure-mgmt-dns
 
 
 ```python
-# Domain for API call
-domain =  "test-01.itxxxxxx.xxx"
+azureidentity = {
+    "subscriptionid":  "",
+    "tenantid":  "",
+    "clientid":  "",
+    "clientsecret":  ""
+}
 
-# API key for API call
-apikey =  "b11111c1-1111-1111-1115-480e1111111c"
-
-# script root folder
-basedir = "/root/dyndns-script"
+# valid entries: ipv6, ipv4, both
+domains = {
+    'subdomain.example.com': 'ipv6',
+}
 ```
 
 ## crontab

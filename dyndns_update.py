@@ -3,12 +3,21 @@ import os
 import sys
 import subprocess
 import json
+import argparse
+
 
 from libdyndns import *
 from libazure import *
 from config import *
 
+# https://docs.python.org/3/library/argparse.html
+parser = argparse.ArgumentParser()
+parser.add_argument('-v', '--verbose')
+parser.add_argument('--no-cache')
+args = parser.parse_args()
+
 os.chdir(basedir)
+
 
 new_ips = get_currentips()
 
