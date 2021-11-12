@@ -25,6 +25,8 @@ azureidentity = {
 domains = {
     'subdomain.example.com': 'ipv6',
 }
+
+basedir = "/root/dyndns-script"
 ```
 
 ## crontab
