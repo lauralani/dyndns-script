@@ -8,73 +8,23 @@ import requests
 
 
 from config import *
+from azure.mgmt.dns import DnsManagementClient
+from azure.mgmt.resource import SubscriptionClient
+from azure.identity import ClientSecretCredential
+
 
 class Cache:
     ipv4 = ""
     ipv6 = ""
 
-    def __init__(self,ipv4, ipv6):
-        self.ipv4=ipv4
-        self.ipv6=ipv6
+    def __init__(self, ipv4, ipv6):
+        self.ipv4 = ipv4
+        self.ipv6 = ipv6
 
-logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s', level=logging.INFO)
+
+logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s')
 log = logging.getLogger("dyndns_update")
-
-
-
-
-#empty_cache = False
-#if "-nocache" in sys.argv:
-#    cached_ips = new_ips
-#else:
-#    try:
-#        cached_ips = get_cache()
-#    except:
-#        empty_cache = True
-#        print(f"{ts()}cache.json doesn't exist. Populating from known IPs")
-#        cached_ips = new_ips
-#
-#    # wenn kein Cache existiert und ist nicht different: (not false and not true)
-#    if not cache_isdifferent(cached_ips, new_ips) and not empty_cache:
-#        exit()
-#    else:
-#        print(f"{ts()}IPs different!")
-#        print(f"{ts()}old IPs: 4={cached_ips.ipv4} 6={cached_ips.ipv6}")
-#        print(f"{ts()}new IPs: 4={new_ips.ipv4} 6={new_ips.ipv6}")
-#        write_currentips(new_ips)
-#
-#result = True
-#
-#if (not "-4" in sys.argv) and (not "-6" in sys.argv):
-#    print("no IP versions selected. Use either -4 or -6 or both")
-#    exit(1);
-#
-#azurerequest = AZURE_DYNDNS()
-#
-#if "-4" in sys.argv:
-#    azurerequest.IPv4 = new_ips.ipv4
-#    print(f"{ts()}adding {new_ips.ipv4} to request via https://api.lauka.space/dyndns")
-#
-#if "-6" in sys.argv:
-#    azurerequest.IPv6 = new_ips.ipv6
-#    print(f"{ts()}adding {new_ips.ipv6} to request via https://api.lauka.space/dyndns")
-#
-#requestbody = json.dumps(azurerequest.__dict__)
-##result = AZURE_update_zonerecord(domain=domain, apikey=apikey, ipaddress=new_ips.ipv6)
-#print(f"Body: {requestbody}")
-#headers = {
-#  'x-api-key': apikey ,
-#  'Content-Type': 'application/json'
-#}
-#result = requests.request("PUT", f"https://api.lauka.app/dyndns/records/{domain}", headers=headers, data=requestbody)
-#
-#if result == False:
-#    print(f"{ts()}Error setting IPs. Deleting cache.")
-#    os.remove("cache.json")
-#
-
-
-
+log.setLevel(logging.INFO)
 
 
 def get_ipv4():
@@ -85,7 +35,7 @@ def get_ipv4():
         response = requests.get(url).text.strip()
     except:
         log.info(f"Can't get IPv4 address from {url}")
-    
+
     if response:
         try:
             ipaddress.ip_address(response)
@@ -103,7 +53,7 @@ def get_ipv6():
         response = requests.get(url).text.strip()
     except:
         log.info(f"Can't get IPv6 address from {url}")
-    
+
     if response:
         try:
             ipaddress.ip_address(response)
@@ -113,13 +63,13 @@ def get_ipv6():
     return response
 
 
-
 def get_cache():
     try:
         with open('cache.json', 'r') as file:
             return json.loads(file.read())
     except:
         return {"ipv4": None, "ipv6": None}
+
 
 def cache_isdifferent(old, new):
     changed = False
@@ -128,8 +78,17 @@ def cache_isdifferent(old, new):
 
     if old["ipv6"] != new["ipv6"]:
         changed = True
-    
+
     return changed
+
+
+def split_fqdn(fqdn):
+    groups = fqdn.split('.')
+    return {
+        "fqdn": fqdn,
+        "record": '.'.join(groups[:2]),
+        "zone": '.'.join(groups[2:])
+    }
 
 
 def convert_to_dict(obj):
@@ -146,11 +105,12 @@ def dict_to_obj(our_dict):
         class_name = our_dict.pop("__class__")
         module_name = our_dict.pop("__module__")
         module = __import__(module_name)
-        class_ = getattr(module,class_name)
+        class_ = getattr(module, class_name)
         obj = class_(**our_dict)
     else:
         obj = our_dict
     return obj
+
 
 def write_cache(obj):
     with open('cache.json', 'w') as outfile:
@@ -160,9 +120,9 @@ def write_cache(obj):
 def main():
     # https://docs.python.org/3/library/argparse.html
     parser = argparse.ArgumentParser()
-    parser.add_argument('-n', '--nocache', action='store_true')
-    parser.add_argument('--dry-run', action='store_true')
-    parser.add_argument('-q', '--quiet', action='store_true')
+    parser.add_argument('-n', '--nocache', action='store_true', help="Disable checking the cache and just update the records.")
+    parser.add_argument('-d', '--dry-run', action='store_true', help="Just simulate the script, dont actually change records. NOT IMPLEMENTED YET!")
+    parser.add_argument('-q', '--quiet', action='store_true', help="Run without logging/output. (useful for cron, etc...)")
     args = parser.parse_args()
 
     cached_ips = None
@@ -190,21 +150,73 @@ def main():
                 exit(0)
     else:
         log.info("skipping cache due to '--nocache'.")
-    
+
     log.info("Now the DNS records would be set ")
     if args.dry_run:
         log.info("EXCEPT for when --dry-run is set ;)")
 
+    # azureidentity = {
+    #     "subscriptionid":  "",
+    #     "tenantid":  "",
+    #     "clientid":  "",
+    #     "clientsecret":  ""
+    # }
+    log.info("Trying to authenticate with Azure credentials...")
+    az_credentials = ClientSecretCredential(
+        tenant_id=azureidentity["tenantid"], client_id=azureidentity["clientid"], client_secret=azureidentity["clientsecret"])
+    az_dns_client = DnsManagementClient(
+        az_credentials, azureidentity["subscriptionid"])
+    log.info("Authentication: Success")
 
-        
-        
-    
-    
-    # if not args.nocache:
-    #     try:
-    #         cached_ips = get_cache()
-    #     except:
-    #         ""
+    for domain in domains:
+        fqdn = split_fqdn(domain)
+        az_domain = None
+        log.info(f"{domain} wants {domains[domain]}")
+
+        log.info(f"Requesting Domain {fqdn['fqdn']} from Azure")
+        try:
+            az_domain = az_dns_client.zones.get(
+                azureidentity['dns_rg_name'], fqdn['zone'])
+        except:
+            log.info(
+                f"Domain {fqdn['zone']} doesn't exist in RG {azureidentity['dns_rg_name']} or I can't access it!")
+            log.info(f"skipping {fqdn['fqdn']} due to previous errors!")
+            continue
+        if domains[domain] == "ipv4" or domains[domain] == "both":
+            if fresh_ips['ipv4']:
+                log.info(f"Add record: {fqdn['fqdn']} 300 IN A {fresh_ips['ipv4']}")
+                az_dns_client.record_sets.create_or_update(
+                    resource_group_name=azureidentity['dns_rg_name'],
+                    zone_name=fqdn['zone'],
+                    relative_record_set_name=fqdn['record'],
+                    record_type="A",
+                    parameters={
+                        "ttl": 300,
+                        "arecords": [
+                            {"ipv4_address": fresh_ips['ipv4']}
+                        ]
+                    }
+                )
+            else:
+                log.info(f"Can't change/add IPv4 for {fqdn['fqdn']}: no IPv4!")
+
+        if domains[domain] == "ipv6" or domains[domain] == "both":
+            if fresh_ips['ipv6']:
+                log.info(f"Add record: {fqdn['fqdn']} 300 IN AAAA {fresh_ips['ipv6']}")
+                az_dns_client.record_sets.create_or_update(
+                    resource_group_name=azureidentity['dns_rg_name'],
+                    zone_name=fqdn['zone'],
+                    relative_record_set_name=fqdn['record'],
+                    record_type="AAAA",
+                    parameters={
+                        "ttl": 300,
+                        "aaaarecords": [
+                            {"ipv6_address": fresh_ips['ipv6']}
+                        ]
+                    }
+                )
+            else:
+                log.info(f"Can't change/add IPv6 for {fqdn['fqdn']}: no IPv6!")
 
 
 if __name__ == "__main__":
