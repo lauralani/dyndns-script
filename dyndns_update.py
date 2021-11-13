@@ -129,7 +129,6 @@ def main():
     else:
         log.info("skipping cache due to '--nocache'.")
 
-    log.info("Now the DNS records would be set ")
     if args.dry_run:
         log.info("EXCEPT for when --dry-run is set ;)")
 
