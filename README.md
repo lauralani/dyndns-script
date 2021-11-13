@@ -18,7 +18,8 @@ azureidentity = {
     "subscriptionid":  "",
     "tenantid":  "",
     "clientid":  "",
-    "clientsecret":  ""
+    "clientsecret":  "",
+    "dns_rg_name": ""
 }
 
 # valid entries: ipv6, ipv4, both
@@ -31,7 +32,7 @@ basedir = "/root/dyndns-script"
 
 ## crontab
 ```
-*/10 * * * * /root/dyndns-script/dyndns_update.py -4 -6 >> /var/log/dyndns.log
+*/10 * * * * /root/dyndns-script/dyndns_update.py --quiet
 ```
 
 ## references
