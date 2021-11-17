@@ -5,21 +5,19 @@ import json
 import argparse
 import logging
 import requests
-
+#import ovh
 
 from config import *
 from azure.mgmt.dns import DnsManagementClient
 from azure.mgmt.resource import SubscriptionClient
 from azure.identity import ClientSecretCredential
+from enum import Enum
 
 
-class Cache:
-    ipv4 = ""
-    ipv6 = ""
-
-    def __init__(self, ipv4, ipv6):
-        self.ipv4 = ipv4
-        self.ipv6 = ipv6
+class IPVariant(Enum):
+    ipv4 = 1
+    ipv6 = 2
+    both = 3
 
 
 logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s')
@@ -27,41 +25,27 @@ log = logging.getLogger("dyndns_update")
 log.setLevel(logging.INFO)
 
 
-def get_ipv4():
-    url = "https://api.ipify.org"
+def get_ip(version : IPVariant):
+    url = None
     response = None
+
+    if version == IPVariant['ipv4']:
+        url = "https://api.ipify.org"
+    elif version == IPVariant['ipv6']:
+        url = "https://api6.ipify.org"
 
     try:
         response = requests.get(url).text.strip()
     except:
-        log.info(f"Can't get IPv4 address from {url}")
+        log.info(f"Can't get {version.name} address from {url}")
 
     if response:
         try:
             ipaddress.ip_address(response)
-            log.info(f"IPv4 address from {url}: {response}")
+            log.info(f"{version.name} address from {url}: {response}")
         except:
             response = None
     return response
-
-
-def get_ipv6():
-    url = "https://api6.ipify.org"
-    response = None
-
-    try:
-        response = requests.get(url).text.strip()
-    except:
-        log.info(f"Can't get IPv6 address from {url}")
-
-    if response:
-        try:
-            ipaddress.ip_address(response)
-            log.info(f"IPv6 address from {url}: {response}")
-        except:
-            response = None
-    return response
-
 
 def get_cache():
     try:
@@ -90,17 +74,62 @@ def split_fqdn(fqdn):
         "zone": '.'.join(split[1:3])
     }
 
+
 def write_cache(obj):
     with open('cache.json', 'w') as outfile:
         outfile.write(json.dumps(obj))
 
 
+def update_dns_azure(dnsclient: DnsManagementClient, fqdn: str, ipaddress: str, ipvariant: IPVariant, resourcegroup : str):
+    splitfqdn = split_fqdn(fqdn)
+    az_domain, recordtype, recordarray = None, None, None
+
+    if ipvariant == IPVariant['ipv4']:
+        recordtype = 'A'
+        recordarray = 'arecords'
+    elif ipvariant == IPVariant['ipv6']:
+        recordtype = 'AAAA'
+        recordarray = 'aaaarecords'
+    else:
+        log.error(f"AZURE: weird parameter {ipvariant} in update_dns_azure(), aborting this fqdn")
+        return 1
+
+
+    try:
+        az_domain = dnsclient.zones.get(
+            resource_group_name=resourcegroup,
+            zone_name=splitfqdn['zone']
+        )
+    except:
+        log.error(
+            f"AZURE: Domain {splitfqdn['zone']} doesn't exist in RG {resourcegroup} or I can't access it!"
+        )
+        log.info(f"AZURE: skipping {splitfqdn['fqdn']} due to previous errors!")
+        return 1
+
+    log.info(f"AZURE: Add record: {splitfqdn['fqdn']} 300 IN {recordtype} {ipaddress}")
+    dnsclient.record_sets.create_or_update(
+        resource_group_name=resourcegroup,
+        zone_name=splitfqdn['zone'],
+        relative_record_set_name=splitfqdn['record'],
+        record_type=recordtype,
+        parameters={
+            "ttl": 300,
+            f"{recordarray}" : [
+                {f"{ipvariant.name}_address": ipaddress}
+            ]
+        }
+    )
+
 def main():
     # https://docs.python.org/3/library/argparse.html
     parser = argparse.ArgumentParser()
-    parser.add_argument('-n', '--nocache', action='store_true', help="Disable checking the cache and just update the records.")
-    parser.add_argument('-d', '--dry-run', action='store_true', help="Just simulate the script, dont actually change records. NOT IMPLEMENTED YET!")
-    parser.add_argument('-q', '--quiet', action='store_true', help="Run without logging/output. (useful for cron, etc...)")
+    parser.add_argument('-n', '--nocache', action='store_true',
+                        help="Disable checking the cache and just update the records.")
+    parser.add_argument('-d', '--dry-run', action='store_true',
+                        help="Just simulate the script, dont actually change records. NOT IMPLEMENTED YET!")
+    parser.add_argument('-q', '--quiet', action='store_true',
+                        help="Run without logging/output. (useful for cron, etc...)")
     args = parser.parse_args()
 
     cached_ips = None
@@ -110,7 +139,7 @@ def main():
     log.info("dyndns_update.py started")
 
     os.chdir(basedir)
-    fresh_ips = {"ipv4": get_ipv4(), "ipv6": get_ipv6()}
+    fresh_ips = {"ipv4": get_ip(IPVariant['ipv4']), "ipv6": get_ip(IPVariant['ipv6'])}
 
     if not args.nocache:
         log.info("getting cached IPs from cache.json")
@@ -132,69 +161,45 @@ def main():
     if args.dry_run:
         log.info("EXCEPT for when --dry-run is set ;)")
 
-    # azureidentity = {
-    #     "subscriptionid":  "",
-    #     "tenantid":  "",
-    #     "clientid":  "",
-    #     "clientsecret":  ""
-    # }
     log.info("Trying to authenticate with Azure credentials...")
-    az_credentials = ClientSecretCredential(
-        tenant_id=azureidentity["tenantid"], client_id=azureidentity["clientid"], client_secret=azureidentity["clientsecret"])
     az_dns_client = DnsManagementClient(
-        az_credentials, azureidentity["subscriptionid"])
+        credential=ClientSecretCredential(
+            tenant_id=secrets['azure']["tenantid"], 
+            client_id=secrets['azure']["clientid"], 
+            client_secret=secrets['azure']["clientsecret"]
+            ), 
+        subscription_id=secrets['azure']["subscriptionid"])
     log.info("Authentication: Success")
 
-    for domain in domains:
-        fqdn = split_fqdn(domain)
-        az_domain = None
-        log.info(f"{domain} wants {domains[domain]}")
+    if domains['azure']:
+        for domain in domains['azure']:
+            domain_wants = IPVariant[domains['azure'][domain].lower()]
+            log.info(f"{domain} wants {domains['azure'][domain]}")
 
-        log.info(f"Requesting Domain {fqdn['fqdn']} from Azure")
-        try:
-            az_domain = az_dns_client.zones.get(
-                azureidentity['dns_rg_name'], fqdn['zone'])
-        except:
-            log.info(
-                f"Domain {fqdn['zone']} doesn't exist in RG {azureidentity['dns_rg_name']} or I can't access it!")
-            log.info(f"skipping {fqdn['fqdn']} due to previous errors!")
-            continue
-        if domains[domain] == "ipv4" or domains[domain] == "both":
-            if fresh_ips['ipv4']:
-                log.info(f"Add record: {fqdn['fqdn']} 300 IN A {fresh_ips['ipv4']}")
-                az_dns_client.record_sets.create_or_update(
-                    resource_group_name=azureidentity['dns_rg_name'],
-                    zone_name=fqdn['zone'],
-                    relative_record_set_name=fqdn['record'],
-                    record_type="A",
-                    parameters={
-                        "ttl": 300,
-                        "arecords": [
-                            {"ipv4_address": fresh_ips['ipv4']}
-                        ]
-                    }
+            if domain_wants == IPVariant['both']:
+                update_dns_azure(
+                    dnsclient=az_dns_client,
+                    fqdn=domain,
+                    ipaddress=fresh_ips["ipv4"],
+                    ipvariant=IPVariant['ipv4'],
+                    resourcegroup=secrets['azure']['dns_rg_name']
+                )
+                update_dns_azure(
+                    dnsclient=az_dns_client,
+                    fqdn=domain,
+                    ipaddress=fresh_ips["ipv6"],
+                    ipvariant=IPVariant['ipv6'],
+                    resourcegroup=secrets['azure']['dns_rg_name']
                 )
             else:
-                log.info(f"Can't change/add IPv4 for {fqdn['fqdn']}: no IPv4!")
-
-        if domains[domain] == "ipv6" or domains[domain] == "both":
-            if fresh_ips['ipv6']:
-                log.info(f"Add record: {fqdn['fqdn']} 300 IN AAAA {fresh_ips['ipv6']}")
-                az_dns_client.record_sets.create_or_update(
-                    resource_group_name=azureidentity['dns_rg_name'],
-                    zone_name=fqdn['zone'],
-                    relative_record_set_name=fqdn['record'],
-                    record_type="AAAA",
-                    parameters={
-                        "ttl": 300,
-                        "aaaarecords": [
-                            {"ipv6_address": fresh_ips['ipv6']}
-                        ]
-                    }
+                update_dns_azure(
+                    dnsclient=az_dns_client,
+                    fqdn=domain,
+                    ipaddress=fresh_ips[domain_wants.name],
+                    ipvariant=domain_wants,
+                    resourcegroup=secrets['azure']['dns_rg_name']
                 )
-            else:
-                log.info(f"Can't change/add IPv6 for {fqdn['fqdn']}: no IPv6!")
-
+        
 
 if __name__ == "__main__":
     main()

@@ -14,17 +14,30 @@ pip3 install pytz requests azure-mgmt-dns azure-identity azure-mgmt-resource
 
 
 ```python
-azureidentity = {
-    "subscriptionid":  "",
-    "tenantid":  "",
-    "clientid":  "",
-    "clientsecret":  "",
-    "dns_rg_name": ""
+secrets = {
+    'azure': {
+        "subscriptionid":  "",
+        "tenantid":  "",
+        "clientid":  "",
+        "clientsecret":  "",
+        "dns_rg_name": ""
+    },
+    'ovh' : {
+        'endpoint' : 'ovh-eu',
+        'application_key' : '',
+        'application_secret' : '',
+        'consumer_key' : ''
+    }
 }
 
 # valid entries: ipv6, ipv4, both
 domains = {
-    'subdomain.example.com': 'ipv6',
+    'azure': {
+        'subdomain.example.com': 'ipv6',
+    },
+    'ovh': {
+
+    }
 }
 
 basedir = "/root/dyndns-script"
