@@ -5,7 +5,7 @@ dnf module -y install python39
 python3 python3-pip
 
 pip3 install --upgrade pip
-pip3 install pytz requests azure-mgmt-dns azure-identity azure-mgmt-resource
+pip3 install pytz requests azure-mgmt-dns azure-identity azure-mgmt-resource ovh
 ```
 
 
@@ -14,17 +14,29 @@ pip3 install pytz requests azure-mgmt-dns azure-identity azure-mgmt-resource
 
 
 ```python
-azureidentity = {
-    "subscriptionid":  "",
-    "tenantid":  "",
-    "clientid":  "",
-    "clientsecret":  "",
-    "dns_rg_name": ""
+secrets = {
+    'azure': {
+        "subscriptionid":  "",
+        "tenantid":  "",
+        "clientid":  "",
+        "clientsecret":  ""
+    }, 
+    'ovh': {
+        'endpoint' : 'ovh-eu',
+        'application_key' : '',
+        'application_secret' : '',
+        'consumer_key' : ''
+    }
 }
 
 # valid entries: ipv6, ipv4, both
 domains = {
-    'subdomain.example.com': 'ipv6',
+    'azure': {
+        'ipv4.dyndns..example.com': 'ipv4',
+        'ipv6.dyndns.example.com': 'ipv6',
+        '@.example.com': 'both',
+    },
+    'ovh': {}
 }
 
 basedir = "/root/dyndns-script"

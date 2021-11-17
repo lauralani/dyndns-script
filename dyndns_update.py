@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from enum import Enum
 import ipaddress
 import os
 import json
@@ -21,6 +22,11 @@ class Cache:
         self.ipv4 = ipv4
         self.ipv6 = ipv6
 
+from enum import Enum
+class IpType(Enum):
+    IPV4 = 1
+    IPV6 = 2
+    BOTH = 3
 
 logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s')
 log = logging.getLogger("dyndns_update")
@@ -133,68 +139,70 @@ def main():
     if args.dry_run:
         log.info("EXCEPT for when --dry-run is set ;)")
 
-    # azureidentity = {
+    # secrets['azure'] = {
     #     "subscriptionid":  "",
     #     "tenantid":  "",
     #     "clientid":  "",
     #     "clientsecret":  ""
     # }
-    log.info("Trying to authenticate with Azure credentials...")
-    az_credentials = ClientSecretCredential(
-        tenant_id=azureidentity["tenantid"], client_id=azureidentity["clientid"], client_secret=azureidentity["clientsecret"])
-    az_dns_client = DnsManagementClient(
-        az_credentials, azureidentity["subscriptionid"])
-    log.info("Authentication: Success")
 
-    for domain in domains:
-        fqdn = split_fqdn(domain)
-        az_domain = None
-        log.info(f"{domain} wants {domains[domain]}")
+    if domains['azure']:
+        log.info("AZure-Domins found in config, proceeding with Azure domains")
+        log.info("Trying to authenticate with Azure credentials...")
+        az_credentials = ClientSecretCredential(
+            tenant_id=secrets['azure']["tenantid"], client_id=secrets['azure']["clientid"], client_secret=secrets['azure']["clientsecret"])
+        az_dns_client = DnsManagementClient(
+            az_credentials, secrets['azure']["subscriptionid"])
+        log.info("Authentication: Success")
 
-        log.info(f"Requesting Domain {fqdn['fqdn']} from Azure")
-        try:
-            az_domain = az_dns_client.zones.get(
-                azureidentity['dns_rg_name'], fqdn['zone'])
-        except:
-            log.info(
-                f"Domain {fqdn['zone']} doesn't exist in RG {azureidentity['dns_rg_name']} or I can't access it!")
-            log.info(f"skipping {fqdn['fqdn']} due to previous errors!")
-            continue
-        if domains[domain] == "ipv4" or domains[domain] == "both":
-            if fresh_ips['ipv4']:
-                log.info(f"Add record: {fqdn['fqdn']} 300 IN A {fresh_ips['ipv4']}")
-                az_dns_client.record_sets.create_or_update(
-                    resource_group_name=azureidentity['dns_rg_name'],
-                    zone_name=fqdn['zone'],
-                    relative_record_set_name=fqdn['record'],
-                    record_type="A",
-                    parameters={
-                        "ttl": 300,
-                        "arecords": [
-                            {"ipv4_address": fresh_ips['ipv4']}
-                        ]
-                    }
-                )
-            else:
-                log.info(f"Can't change/add IPv4 for {fqdn['fqdn']}: no IPv4!")
+        for domain in domains:
+            fqdn = split_fqdn(domain)
+            az_domain = None
+            log.info(f"{domain} wants {domains[domain]}")
 
-        if domains[domain] == "ipv6" or domains[domain] == "both":
-            if fresh_ips['ipv6']:
-                log.info(f"Add record: {fqdn['fqdn']} 300 IN AAAA {fresh_ips['ipv6']}")
-                az_dns_client.record_sets.create_or_update(
-                    resource_group_name=azureidentity['dns_rg_name'],
-                    zone_name=fqdn['zone'],
-                    relative_record_set_name=fqdn['record'],
-                    record_type="AAAA",
-                    parameters={
-                        "ttl": 300,
-                        "aaaarecords": [
-                            {"ipv6_address": fresh_ips['ipv6']}
-                        ]
-                    }
-                )
-            else:
-                log.info(f"Can't change/add IPv6 for {fqdn['fqdn']}: no IPv6!")
+            log.info(f"Requesting Domain {fqdn['fqdn']} from Azure")
+            try:
+                az_domain = az_dns_client.zones.get(secrets['azure']['dns_rg_name'], fqdn['zone'])
+            except:
+                log.info(
+                    f"Domain {fqdn['zone']} doesn't exist in RG {secrets['azure']['dns_rg_name']} or I can't access it!")
+                log.info(f"skipping {fqdn['fqdn']} due to previous errors!")
+                continue
+            if domains[domain] == "ipv4" or domains[domain] == "both":
+                if fresh_ips['ipv4']:
+                    log.info(f"Add record: {fqdn['fqdn']} 300 IN A {fresh_ips['ipv4']}")
+                    az_dns_client.record_sets.create_or_update(
+                        resource_group_name=secrets['azure']['dns_rg_name'],
+                        zone_name=fqdn['zone'],
+                        relative_record_set_name=fqdn['record'],
+                        record_type="A",
+                        parameters={
+                            "ttl": 300,
+                            "arecords": [
+                                {"ipv4_address": fresh_ips['ipv4']}
+                            ]
+                        }
+                    )
+                else:
+                    log.info(f"Can't change/add IPv4 for {fqdn['fqdn']}: no IPv4!")
+
+            if domains[domain] == "ipv6" or domains[domain] == "both":
+                if fresh_ips['ipv6']:
+                    log.info(f"Add record: {fqdn['fqdn']} 300 IN AAAA {fresh_ips['ipv6']}")
+                    az_dns_client.record_sets.create_or_update(
+                        resource_group_name=secrets['azure']['dns_rg_name'],
+                        zone_name=fqdn['zone'],
+                        relative_record_set_name=fqdn['record'],
+                        record_type="AAAA",
+                        parameters={
+                            "ttl": 300,
+                            "aaaarecords": [
+                                {"ipv6_address": fresh_ips['ipv6']}
+                            ]
+                        }
+                    )
+                else:
+                    log.info(f"Can't change/add IPv6 for {fqdn['fqdn']}: no IPv6!")
 
 
 if __name__ == "__main__":
