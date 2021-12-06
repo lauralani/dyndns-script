@@ -5,11 +5,10 @@ import json
 import argparse
 import logging
 import requests
-#import ovh
+import ovh
 
 from config import *
 from azure.mgmt.dns import DnsManagementClient
-from azure.mgmt.resource import SubscriptionClient
 from azure.identity import ClientSecretCredential
 from enum import Enum
 
@@ -121,6 +120,51 @@ def update_dns_azure(dnsclient: DnsManagementClient, fqdn: str, ipaddress: str, 
         }
     )
 
+def update_dns_ovh(dnsclient: ovh.Client, fqdn: str, ipaddress: str, ipvariant: IPVariant):
+    splitfqdn = split_fqdn(fqdn)
+    #az_domain, recordtype, recordarray = None, None, None
+
+    if ipvariant == IPVariant['ipv4']:
+        recordtype = 'A'
+        recordarray = 'arecords'
+    elif ipvariant == IPVariant['ipv6']:
+        recordtype = 'AAAA'
+        recordarray = 'aaaarecords'
+    else:
+        log.error(f"AZURE: weird parameter {ipvariant} in update_dns_azure(), aborting this fqdn")
+        return 1
+    
+
+
+
+
+    try:
+        ovh_domain = dnsclient.get(f"/domain/zone/{splitfqdn['zone']}/record", fieldType=type, subDomain=subdomain)
+        az_domain = dnsclient.zones.get(
+            resource_group_name=resourcegroup,
+            zone_name=splitfqdn['zone']
+        )
+    except:
+        log.error(
+            f"AZURE: Domain {splitfqdn['zone']} doesn't exist in RG {resourcegroup} or I can't access it!"
+        )
+        log.info(f"AZURE: skipping {splitfqdn['fqdn']} due to previous errors!")
+        return 1
+
+    log.info(f"AZURE: Add record: {splitfqdn['fqdn']} 300 IN {recordtype} {ipaddress}")
+    dnsclient.record_sets.create_or_update(
+        resource_group_name=resourcegroup,
+        zone_name=splitfqdn['zone'],
+        relative_record_set_name=splitfqdn['record'],
+        record_type=recordtype,
+        parameters={
+            "ttl": 300,
+            f"{recordarray}" : [
+                {f"{ipvariant.name}_address": ipaddress}
+            ]
+        }
+    )
+
 def main():
     # https://docs.python.org/3/library/argparse.html
     parser = argparse.ArgumentParser()
@@ -161,17 +205,17 @@ def main():
     if args.dry_run:
         log.info("EXCEPT for when --dry-run is set ;)")
 
-    log.info("Trying to authenticate with Azure credentials...")
-    az_dns_client = DnsManagementClient(
-        credential=ClientSecretCredential(
-            tenant_id=secrets['azure']["tenantid"], 
-            client_id=secrets['azure']["clientid"], 
-            client_secret=secrets['azure']["clientsecret"]
-            ), 
-        subscription_id=secrets['azure']["subscriptionid"])
-    log.info("Authentication: Success")
-
     if domains['azure']:
+        log.info("Trying to authenticate with Azure credentials...")
+        az_dns_client = DnsManagementClient(
+            credential=ClientSecretCredential(
+                tenant_id=secrets['azure']["tenantid"], 
+                client_id=secrets['azure']["clientid"], 
+                client_secret=secrets['azure']["clientsecret"]
+            ), 
+            subscription_id=secrets['azure']["subscriptionid"]
+        )
+        log.info("Authentication: Success")
         for domain in domains['azure']:
             domain_wants = IPVariant[domains['azure'][domain].lower()]
             log.info(f"{domain} wants {domains['azure'][domain]}")
@@ -199,7 +243,42 @@ def main():
                     ipvariant=domain_wants,
                     resourcegroup=secrets['azure']['dns_rg_name']
                 )
-        
+
+    if domains['ovh']:
+        ovh_dns_client = ovh.Client(
+            endpoint=secrets['ovh']['endpoint'],
+            application_key=secrets['ovh']['application_key'],
+            application_secret=secrets['ovh']['application_secret'],
+            consumer_key=secrets['ovh']['consumer_key'],
+        )
+        for domain in domains['ovh']:
+            domain_wants = IPVariant[domains['azure'][domain].lower()]
+            log.info(f"{domain} wants {domains['azure'][domain]}")
+
+            if domain_wants == IPVariant['both']:
+                update_dns_azure(
+                    dnsclient=az_dns_client,
+                    fqdn=domain,
+                    ipaddress=fresh_ips["ipv4"],
+                    ipvariant=IPVariant['ipv4'],
+                    resourcegroup=secrets['azure']['dns_rg_name']
+                )
+                update_dns_azure(
+                    dnsclient=az_dns_client,
+                    fqdn=domain,
+                    ipaddress=fresh_ips["ipv6"],
+                    ipvariant=IPVariant['ipv6'],
+                    resourcegroup=secrets['azure']['dns_rg_name']
+                )
+            else:
+                update_dns_azure(
+                    dnsclient=az_dns_client,
+                    fqdn=domain,
+                    ipaddress=fresh_ips[domain_wants.name],
+                    ipvariant=domain_wants,
+                    resourcegroup=secrets['azure']['dns_rg_name']
+                )
+
 
 if __name__ == "__main__":
     main()
