@@ -131,27 +131,19 @@ def update_dns_ovh(dnsclient: ovh.Client, fqdn: str, ipaddress: str, ipvariant: 
         recordtype = 'AAAA'
         recordarray = 'aaaarecords'
     else:
-        log.error(f"AZURE: weird parameter {ipvariant} in update_dns_azure(), aborting this fqdn")
+        log.error(f"OVH: weird parameter {ipvariant} in update_dns_ovh(), aborting this fqdn")
         return 1
-    
-
-
-
 
     try:
         ovh_domain = dnsclient.get(f"/domain/zone/{splitfqdn['zone']}/record", fieldType=type, subDomain=subdomain)
-        az_domain = dnsclient.zones.get(
-            resource_group_name=resourcegroup,
-            zone_name=splitfqdn['zone']
-        )
     except:
         log.error(
-            f"AZURE: Domain {splitfqdn['zone']} doesn't exist in RG {resourcegroup} or I can't access it!"
+            f"OVH: Domain {splitfqdn['zone']} doesn't exist in RG {resourcegroup} or I can't access it!"
         )
-        log.info(f"AZURE: skipping {splitfqdn['fqdn']} due to previous errors!")
+        log.info(f"OVH: skipping {splitfqdn['fqdn']} due to previous errors!")
         return 1
 
-    log.info(f"AZURE: Add record: {splitfqdn['fqdn']} 300 IN {recordtype} {ipaddress}")
+    log.info(f"OVH: Add record: {splitfqdn['fqdn']} 300 IN {recordtype} {ipaddress}")
     dnsclient.record_sets.create_or_update(
         resource_group_name=resourcegroup,
         zone_name=splitfqdn['zone'],
@@ -249,7 +241,7 @@ def main():
             endpoint=secrets['ovh']['endpoint'],
             application_key=secrets['ovh']['application_key'],
             application_secret=secrets['ovh']['application_secret'],
-            consumer_key=secrets['ovh']['consumer_key'],
+            consumer_key=secrets['ovh']['consumer_key']
         )
         for domain in domains['ovh']:
             domain_wants = IPVariant[domains['azure'][domain].lower()]
