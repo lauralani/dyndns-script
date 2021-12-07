@@ -187,6 +187,7 @@ def track(provider: str, ip4: str, ip6: str, fqdn: str):
         'X-ApiKey': tracking['apikey'],
         'Content-Type': 'application/json'
     }
+    log.info(f"TRACKING: Send payload for {fqdn}")
     response = requests.request("POST", tracking['endpoint'], headers=headers, data=json.dumps(payload))
 
 
