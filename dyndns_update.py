@@ -5,11 +5,10 @@ import json
 import argparse
 import logging
 import requests
-#import ovh
+import ovh
 
 from config import *
 from azure.mgmt.dns import DnsManagementClient
-from azure.mgmt.resource import SubscriptionClient
 from azure.identity import ClientSecretCredential
 from enum import Enum
 
@@ -121,6 +120,78 @@ def update_dns_azure(dnsclient: DnsManagementClient, fqdn: str, ipaddress: str, 
         }
     )
 
+def update_dns_ovh(dnsclient: ovh.Client, fqdn: str, ipaddress: str, ipvariant: IPVariant):
+    splitfqdn = split_fqdn(fqdn)
+    recordtype = None
+
+    if ipvariant == IPVariant['ipv4']:
+        recordtype = 'A'
+    elif ipvariant == IPVariant['ipv6']:
+        recordtype = 'AAAA'
+    else:
+        log.error(f"OVH: weird parameter {ipvariant} in update_dns_ovh(), aborting this fqdn")
+        return 1
+
+    try:
+        dnsclient.get(f"/domain/zone/{splitfqdn['zone']}")
+    except:
+        log.error(
+            f"OVH: Domain {splitfqdn['zone']} doesn't exist in this OVH account, or I can't access it!"
+        )
+        log.info(f"OVH: skipping {splitfqdn['fqdn']} due to previous errors!")
+        return 1
+    ovhrecords = dnsclient.get(f"/domain/zone/{splitfqdn['zone']}/record", fieldType=recordtype, subDomain=splitfqdn['record'])
+
+    if len(ovhrecords) > 1:
+        log.error(f"OVH: please fix DNS config for {splitfqdn['zone']}, there is more than one record for {splitfqdn['fqdn']}!")
+        log.info(f"OVH: skipping {splitfqdn['fqdn']} due to previous errors!")
+        return 1
+    
+    if len(ovhrecords) == 1:
+        log.info(f"OVH: Modify record: {splitfqdn['fqdn']} 300 IN {recordtype} {ipaddress}")
+        dnsclient.put(f"/domain/zone/{splitfqdn['zone']}/record/{ovhrecords[0]}", 
+            subDomain=splitfqdn['record'], 
+            target=ipaddress, 
+            ttl=300
+        )
+    else:
+        log.info(f"OVH: Add record: {splitfqdn['fqdn']} 300 IN {recordtype} {ipaddress}")
+
+        dnsclient.post(f"/domain/zone/{splitfqdn['zone']}/record", 
+            fieldType=recordtype,
+            subDomain=splitfqdn['record'],
+            target=ipaddress,
+            ttl=300
+        )
+    
+    
+    log.info(f"OVH: Refreshing zone: {splitfqdn['zone']}")
+    dnsclient.post(f"/domain/zone/{splitfqdn['zone']}/refresh")
+
+def track(provider: str, ip4: str, ip6: str, fqdn: str):
+    try:
+        tracking
+    except:
+        log.info(f"TRACKING: no tracking config found. Not tracking.")
+        return 0
+
+    import socket
+    payload = {
+        "provider" : provider,
+        "ip4" : ip4,
+        "ip6" : ip6,
+        "fqdn" : fqdn,
+        "hostname" : socket.gethostname()
+    }
+    headers = {
+        'X-ApiKey': tracking['apikey'],
+        'Content-Type': 'application/json'
+    }
+    log.info(f"TRACKING: Send payload for {fqdn}")
+    response = requests.request("POST", tracking['endpoint'], headers=headers, data=json.dumps(payload))
+
+
+
 def main():
     # https://docs.python.org/3/library/argparse.html
     parser = argparse.ArgumentParser()
@@ -161,20 +232,20 @@ def main():
     if args.dry_run:
         log.info("EXCEPT for when --dry-run is set ;)")
 
-    log.info("Trying to authenticate with Azure credentials...")
-    az_dns_client = DnsManagementClient(
-        credential=ClientSecretCredential(
-            tenant_id=secrets['azure']["tenantid"], 
-            client_id=secrets['azure']["clientid"], 
-            client_secret=secrets['azure']["clientsecret"]
-            ), 
-        subscription_id=secrets['azure']["subscriptionid"])
-    log.info("Authentication: Success")
-
     if domains['azure']:
+        log.info("Trying to authenticate with Azure credentials...")
+        az_dns_client = DnsManagementClient(
+            credential=ClientSecretCredential(
+                tenant_id=secrets['azure']["tenantid"], 
+                client_id=secrets['azure']["clientid"], 
+                client_secret=secrets['azure']["clientsecret"]
+            ), 
+            subscription_id=secrets['azure']["subscriptionid"]
+        )
+        log.info("Authentication: Success")
         for domain in domains['azure']:
             domain_wants = IPVariant[domains['azure'][domain].lower()]
-            log.info(f"{domain} wants {domains['azure'][domain]}")
+            log.info(f"AZURE: {domain} wants {domains['azure'][domain]}")
 
             if domain_wants == IPVariant['both']:
                 update_dns_azure(
@@ -191,6 +262,12 @@ def main():
                     ipvariant=IPVariant['ipv6'],
                     resourcegroup=secrets['azure']['dns_rg_name']
                 )
+                track(
+                    provider="azure",
+                    ip4=fresh_ips["ipv4"],
+                    ip6=fresh_ips["ipv6"],
+                    fqdn=domain
+                )
             else:
                 update_dns_azure(
                     dnsclient=az_dns_client,
@@ -199,7 +276,75 @@ def main():
                     ipvariant=domain_wants,
                     resourcegroup=secrets['azure']['dns_rg_name']
                 )
-        
+                if domain_wants == IPVariant.ipv4:
+                    track(
+                        provider="azure",
+                        ip4=fresh_ips["ipv4"],
+                        ip6=None,
+                        fqdn=domain
+                    )
+                else:
+                    track(
+                        provider="azure",
+                        ip4=None,
+                        ip6=fresh_ips["ipv6"],
+                        fqdn=domain
+                    )
+
+    if domains['ovh']:
+        ovh_dns_client = ovh.Client(
+            endpoint=secrets['ovh']['endpoint'],
+            application_key=secrets['ovh']['application_key'],
+            application_secret=secrets['ovh']['application_secret'],
+            consumer_key=secrets['ovh']['consumer_key']
+        )
+        for domain in domains['ovh']:
+            domain_wants = IPVariant[domains['ovh'][domain].lower()]
+            log.info(f"OVH: {domain} wants {domains['ovh'][domain]}")
+
+            if domain_wants == IPVariant['both']:
+                # To Do from here
+                update_dns_ovh(
+                    dnsclient=ovh_dns_client,
+                    fqdn=domain,
+                    ipaddress=fresh_ips["ipv4"],
+                    ipvariant=IPVariant['ipv4']
+                )
+                update_dns_ovh(
+                    dnsclient=ovh_dns_client,
+                    fqdn=domain,
+                    ipaddress=fresh_ips["ipv6"],
+                    ipvariant=IPVariant['ipv6']
+                )
+                track(
+                    provider="ovh",
+                    ip4=fresh_ips["ipv4"],
+                    ip6=fresh_ips["ipv6"],
+                    fqdn=domain
+                )
+            else:
+                update_dns_ovh(
+                    dnsclient=ovh_dns_client,
+                    fqdn=domain,
+                    ipaddress=fresh_ips[domain_wants.name],
+                    ipvariant=domain_wants
+                )
+                if domain_wants == IPVariant.ipv4:
+                    track(
+                        provider="ovh",
+                        ip4=fresh_ips["ipv4"],
+                        ip6=None,
+                        fqdn=domain
+                    )
+                else:
+                    track(
+                        provider="ovh",
+                        ip4=None,
+                        ip6=fresh_ips["ipv6"],
+                        fqdn=domain
+                    )
+            
+
 
 if __name__ == "__main__":
     main()
