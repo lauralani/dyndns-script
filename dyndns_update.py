@@ -122,40 +122,52 @@ def update_dns_azure(dnsclient: DnsManagementClient, fqdn: str, ipaddress: str, 
 
 def update_dns_ovh(dnsclient: ovh.Client, fqdn: str, ipaddress: str, ipvariant: IPVariant):
     splitfqdn = split_fqdn(fqdn)
-    #az_domain, recordtype, recordarray = None, None, None
+    recordtype = None
 
     if ipvariant == IPVariant['ipv4']:
         recordtype = 'A'
-        recordarray = 'arecords'
     elif ipvariant == IPVariant['ipv6']:
         recordtype = 'AAAA'
-        recordarray = 'aaaarecords'
     else:
         log.error(f"OVH: weird parameter {ipvariant} in update_dns_ovh(), aborting this fqdn")
         return 1
 
     try:
-        ovh_domain = dnsclient.get(f"/domain/zone/{splitfqdn['zone']}/record", fieldType=type, subDomain=subdomain)
+        dnsclient.get(f"/domain/zone/{splitfqdn['zone']}")
     except:
         log.error(
-            f"OVH: Domain {splitfqdn['zone']} doesn't exist in RG {resourcegroup} or I can't access it!"
+            f"OVH: Domain {splitfqdn['zone']} doesn't exist in this OVH account, or I can't access it!"
         )
         log.info(f"OVH: skipping {splitfqdn['fqdn']} due to previous errors!")
         return 1
+    ovhrecords = dnsclient.get(f"/domain/zone/{splitfqdn['zone']}/record", fieldType=recordtype, subDomain=splitfqdn['record'])
 
-    log.info(f"OVH: Add record: {splitfqdn['fqdn']} 300 IN {recordtype} {ipaddress}")
-    dnsclient.record_sets.create_or_update(
-        resource_group_name=resourcegroup,
-        zone_name=splitfqdn['zone'],
-        relative_record_set_name=splitfqdn['record'],
-        record_type=recordtype,
-        parameters={
-            "ttl": 300,
-            f"{recordarray}" : [
-                {f"{ipvariant.name}_address": ipaddress}
-            ]
-        }
-    )
+    if len(ovhrecords) > 1:
+        log.error(f"OVH: please fix DNS config for {splitfqdn['zone']}, there is more than one record for {splitfqdn['fqdn']}!")
+        log.info(f"OVH: skipping {splitfqdn['fqdn']} due to previous errors!")
+        return 1
+    
+    if len(ovhrecords) == 1:
+        log.info(f"OVH: Modify record: {splitfqdn['fqdn']} 300 IN {recordtype} {ipaddress}")
+        dnsclient.put(f"/domain/zone/{splitfqdn['zone']}/record/{ovhrecords[0]}", 
+            subDomain=splitfqdn['record'], 
+            target=ipaddress, 
+            ttl=300
+        )
+    else:
+        log.info(f"OVH: Add record: {splitfqdn['fqdn']} 300 IN {recordtype} {ipaddress}")
+
+        dnsclient.post(f"/domain/zone/{splitfqdn['zone']}/record", 
+            fieldType=recordtype,
+            subDomain=splitfqdn['record'],
+            target=ipaddress,
+            ttl=300
+        )
+    
+    
+    log.info(f"OVH: Refreshing zone: {splitfqdn['zone']}")
+    dnsclient.post(f"/domain/zone/{splitfqdn['zone']}/refresh")
+
 
 def main():
     # https://docs.python.org/3/library/argparse.html
@@ -210,7 +222,7 @@ def main():
         log.info("Authentication: Success")
         for domain in domains['azure']:
             domain_wants = IPVariant[domains['azure'][domain].lower()]
-            log.info(f"{domain} wants {domains['azure'][domain]}")
+            log.info(f"AZURE: {domain} wants {domains['azure'][domain]}")
 
             if domain_wants == IPVariant['both']:
                 update_dns_azure(
@@ -244,31 +256,29 @@ def main():
             consumer_key=secrets['ovh']['consumer_key']
         )
         for domain in domains['ovh']:
-            domain_wants = IPVariant[domains['azure'][domain].lower()]
-            log.info(f"{domain} wants {domains['azure'][domain]}")
+            domain_wants = IPVariant[domains['ovh'][domain].lower()]
+            log.info(f"OVH: {domain} wants {domains['ovh'][domain]}")
 
             if domain_wants == IPVariant['both']:
-                update_dns_azure(
-                    dnsclient=az_dns_client,
+                # To Do from here
+                update_dns_ovh(
+                    dnsclient=ovh_dns_client,
                     fqdn=domain,
                     ipaddress=fresh_ips["ipv4"],
-                    ipvariant=IPVariant['ipv4'],
-                    resourcegroup=secrets['azure']['dns_rg_name']
+                    ipvariant=IPVariant['ipv4']
                 )
-                update_dns_azure(
-                    dnsclient=az_dns_client,
+                update_dns_ovh(
+                    dnsclient=ovh_dns_client,
                     fqdn=domain,
                     ipaddress=fresh_ips["ipv6"],
-                    ipvariant=IPVariant['ipv6'],
-                    resourcegroup=secrets['azure']['dns_rg_name']
+                    ipvariant=IPVariant['ipv6']
                 )
             else:
-                update_dns_azure(
-                    dnsclient=az_dns_client,
+                update_dns_ovh(
+                    dnsclient=ovh_dns_client,
                     fqdn=domain,
                     ipaddress=fresh_ips[domain_wants.name],
-                    ipvariant=domain_wants,
-                    resourcegroup=secrets['azure']['dns_rg_name']
+                    ipvariant=domain_wants
                 )
 
 
