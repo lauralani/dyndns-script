@@ -168,24 +168,23 @@ def update_dns_ovh(dnsclient: ovh.Client, fqdn: str, ipaddress: str, ipvariant: 
     log.info(f"OVH: Refreshing zone: {splitfqdn['zone']}")
     dnsclient.post(f"/domain/zone/{splitfqdn['zone']}/refresh")
 
-def send_info(service: str, ip4: str, ip6: str, fqdn: str):
+def send_info(provider: str, ip4: str, ip6: str, fqdn: str):
     try:
         info
     except:
         return 1
 
-    from datetime import datetime
-
+    import socket
     payload = {
-        "service" : service,
+        "provider" : provider,
         "ip4" : ip4,
         "ip6" : ip6,
         "fqdn" : fqdn,
-        "timestamp" : datetime.now()
+        "hostname" : socket.gethostname()
     }
     headers = {
-    'X-ApiKey': info['apikey'],
-    'Content-Type': 'application/json'
+        'X-ApiKey': info['apikey'],
+        'Content-Type': 'application/json'
     }
     response = requests.request("POST", info['endpoint'], headers=headers, data=json.dumps(payload))
 
