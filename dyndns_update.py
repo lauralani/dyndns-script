@@ -168,11 +168,12 @@ def update_dns_ovh(dnsclient: ovh.Client, fqdn: str, ipaddress: str, ipvariant: 
     log.info(f"OVH: Refreshing zone: {splitfqdn['zone']}")
     dnsclient.post(f"/domain/zone/{splitfqdn['zone']}/refresh")
 
-def send_info(provider: str, ip4: str, ip6: str, fqdn: str):
+def track(provider: str, ip4: str, ip6: str, fqdn: str):
     try:
-        info
+        tracking
     except:
-        return 1
+        log.info(f"TRACKING: no tracking config found. Not tracking.")
+        return 0
 
     import socket
     payload = {
@@ -183,10 +184,10 @@ def send_info(provider: str, ip4: str, ip6: str, fqdn: str):
         "hostname" : socket.gethostname()
     }
     headers = {
-        'X-ApiKey': info['apikey'],
+        'X-ApiKey': tracking['apikey'],
         'Content-Type': 'application/json'
     }
-    response = requests.request("POST", info['endpoint'], headers=headers, data=json.dumps(payload))
+    response = requests.request("POST", tracking['endpoint'], headers=headers, data=json.dumps(payload))
 
 
 
@@ -260,6 +261,12 @@ def main():
                     ipvariant=IPVariant['ipv6'],
                     resourcegroup=secrets['azure']['dns_rg_name']
                 )
+                track(
+                    provider="azure",
+                    ip4=fresh_ips["ipv4"],
+                    ip6=fresh_ips["ipv6"],
+                    fqdn=domain
+                )
             else:
                 update_dns_azure(
                     dnsclient=az_dns_client,
@@ -268,6 +275,20 @@ def main():
                     ipvariant=domain_wants,
                     resourcegroup=secrets['azure']['dns_rg_name']
                 )
+                if domain_wants == IPVariant.ipv4:
+                    track(
+                        provider="azure",
+                        ip4=fresh_ips["ipv4"],
+                        ip6=None,
+                        fqdn=domain
+                    )
+                else:
+                    track(
+                        provider="azure",
+                        ip4=None,
+                        ip6=fresh_ips["ipv6"],
+                        fqdn=domain
+                    )
 
     if domains['ovh']:
         ovh_dns_client = ovh.Client(
@@ -294,6 +315,12 @@ def main():
                     ipaddress=fresh_ips["ipv6"],
                     ipvariant=IPVariant['ipv6']
                 )
+                track(
+                    provider="ovh",
+                    ip4=fresh_ips["ipv4"],
+                    ip6=fresh_ips["ipv6"],
+                    fqdn=domain
+                )
             else:
                 update_dns_ovh(
                     dnsclient=ovh_dns_client,
@@ -301,6 +328,21 @@ def main():
                     ipaddress=fresh_ips[domain_wants.name],
                     ipvariant=domain_wants
                 )
+                if domain_wants == IPVariant.ipv4:
+                    track(
+                        provider="ovh",
+                        ip4=fresh_ips["ipv4"],
+                        ip6=None,
+                        fqdn=domain
+                    )
+                else:
+                    track(
+                        provider="ovh",
+                        ip4=None,
+                        ip6=fresh_ips["ipv6"],
+                        fqdn=domain
+                    )
+            
 
 
 if __name__ == "__main__":
