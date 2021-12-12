@@ -124,6 +124,9 @@ def update_dns_ovh(dnsclient: ovh.Client, fqdn: str, ipaddress: str, ipvariant: 
     splitfqdn = split_fqdn(fqdn)
     recordtype = None
 
+    if splitfqdn["record"] == "@":
+        splitfqdn["record"] = ""
+
     if ipvariant == IPVariant['ipv4']:
         recordtype = 'A'
     elif ipvariant == IPVariant['ipv6']:
