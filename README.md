@@ -1,4 +1,14 @@
 # dyndns-script
+ATTENTION!
+
+
+This project moved to SourceHut!
+
+See https://sfconservancy.org/GiveUpGitHub/
+
+The new home for this project is at https://sr.ht/~lauralani/dyndns-script/
+
+
 ## Prerequisites
 ```
 dnf module -y install python39
